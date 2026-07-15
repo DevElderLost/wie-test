@@ -108,6 +108,14 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 // nativeSurfaceDestroyed (which don't have access to the type-erased
 // `Box<dyn Emulator>` in STATE) can still bind/unbind the ANativeWindow.
 static SCREEN: Mutex<Option<Arc<AndroidScreen>>> = Mutex::new(None);
+// The SurfaceView's Surface is typically created (surfaceCreated ->
+// nativeSurfaceCreated) as soon as the view attaches - well before the user
+// has picked a ROM and nativeLoadApp has run. We can't bind it to the
+// AndroidScreen yet at that point (SCREEN is still empty), so stash it here
+// and nativeLoadApp claims it once the screen exists. Without this, the
+// window is silently dropped and the game runs with nothing to draw into
+// (black screen, controls still visible/responsive).
+static PENDING_WINDOW: Mutex<Option<ndk::native_window::NativeWindow>> = Mutex::new(None);
 
 fn jstring_to_string(env: &mut JNIEnv, s: &JString) -> String {
     env.get_string(s).map(|s| s.into()).unwrap_or_default()
@@ -163,6 +171,9 @@ pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeLoadApp(
     let base_path = PathBuf::from(&files_dir).join("wie");
     let screen = Arc::new(AndroidScreen::new(SCREEN_WIDTH, SCREEN_HEIGHT));
     *SCREEN.lock().unwrap() = Some(screen.clone());
+    if let Some(window) = PENDING_WINDOW.lock().unwrap().take() {
+        screen.set_window(Some(window));
+    }
 
     let platform = Box::new(AndroidPlatform {
         screen,
@@ -256,6 +267,7 @@ pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeDestroy(_env: JNIEnv,
     RUNNING.store(false, Ordering::SeqCst);
     *STATE.lock().unwrap() = None;
     *SCREEN.lock().unwrap() = None;
+    *PENDING_WINDOW.lock().unwrap() = None;
 }
 
 /// `surface` is an `android.view.Surface` obtained from
@@ -272,12 +284,16 @@ pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeSurfaceCreated(env: J
     if let Some(screen) = SCREEN.lock().unwrap().as_ref() {
         screen.set_window(native_window);
     } else {
-        log::warn!("nativeSurfaceCreated called before emulator was loaded");
+        // ROM not loaded yet (this Surface was created as soon as the
+        // SurfaceView attached, well before nativeLoadApp runs) - stash it
+        // for nativeLoadApp to bind once the AndroidScreen exists.
+        *PENDING_WINDOW.lock().unwrap() = native_window;
     }
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeSurfaceDestroyed(_env: JNIEnv, _class: JClass) {
+    *PENDING_WINDOW.lock().unwrap() = None;
     if let Some(screen) = SCREEN.lock().unwrap().as_ref() {
         screen.set_window(None);
     }
