@@ -236,13 +236,17 @@ pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeLoadApp(
 /// `nativeLoadApp` succeeds and the Surface is ready.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeStart(_env: JNIEnv, _class: JClass) {
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        log::debug!("nativeStart: already running, ignoring duplicate call");
+        return;
+    }
     log::info!("nativeStart: tick thread starting");
-    RUNNING.store(true, Ordering::SeqCst);
     thread::spawn(|| {
         // ~16ms ≈ 60Hz; the original WIPI/MIDP handsets ran their UI loop
         // far slower than this, so this is intentionally generous headroom,
         // not a hard timing requirement copied from real hardware.
         let tick_interval = Duration::from_millis(16);
+        let mut tick_count: u64 = 0;
         while RUNNING.load(Ordering::SeqCst) {
             let mut guard = STATE.lock().unwrap();
             if let Some(state) = guard.as_mut() {
@@ -256,6 +260,19 @@ pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeStart(_env: JNIEnv, _
                 break;
             }
             drop(guard);
+
+            // Heartbeat every ~5s so a hung/livelocked core (no crash, no
+            // paint, nothing) is distinguishable in the log from a thread
+            // that silently died - if you stop seeing these, the tick loop
+            // itself is gone (check for a panic above); if you keep seeing
+            // these but never see paint() logs, the emulator is alive but
+            // stuck before its first repaint call (likely a real core bug,
+            // not an Android-side one).
+            tick_count += 1;
+            if tick_count % 300 == 0 {
+                log::debug!("tick heartbeat: {tick_count} ticks so far");
+            }
+
             thread::sleep(tick_interval);
         }
     });
