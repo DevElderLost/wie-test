@@ -1,6 +1,6 @@
 package net.dlunch.wie
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -11,7 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
  * it, and start ticking. No ROM library / recent-files UI yet - that's a
  * good next step once the core loop is confirmed working on-device.
  */
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
 
     private var loaded = false
 

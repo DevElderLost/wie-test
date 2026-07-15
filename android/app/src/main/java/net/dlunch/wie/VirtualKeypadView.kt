@@ -10,7 +10,7 @@ import androidx.core.view.setPadding
 /**
  * Bare-bones on-screen keypad standing in for the physical numeric keypad +
  * soft keys of the original feature phones. Layout mirrors a typical
- * KTF/LGT handset: two soft keys flanking a dpad+OK cluster, then 0-9/*/#
+ * KTF/LGT handset: two soft keys flanking a dpad+OK cluster, 	hen 0-9, *, #
  * below it.
  *
  * This intentionally does NOT try to replicate the floating/draggable
