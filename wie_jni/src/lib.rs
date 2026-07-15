@@ -1,4 +1,5 @@
 mod audio;
+mod filelog;
 mod screen;
 mod storage;
 
@@ -122,8 +123,9 @@ fn jstring_to_string(env: &mut JNIEnv, s: &JString) -> String {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeInitLogging(_env: JNIEnv, _class: JClass) {
-    let _ = android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Debug).with_tag("wie_jni"));
+pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeInitLogging(mut env: JNIEnv, _class: JClass, log_path: JString) {
+    let log_path = jstring_to_string(&mut env, &log_path);
+    filelog::init(&log_path);
     log::info!("wie_jni logging initialized");
 }
 
@@ -219,6 +221,7 @@ pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeLoadApp(
 
     match emulator {
         Ok(emulator) => {
+            log::info!("app loaded OK: {filename}");
             *STATE.lock().unwrap() = Some(EmulatorState { emulator });
             JNI_TRUE
         }
@@ -233,6 +236,7 @@ pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeLoadApp(
 /// `nativeLoadApp` succeeds and the Surface is ready.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_net_dlunch_wie_WieNative_nativeStart(_env: JNIEnv, _class: JClass) {
+    log::info!("nativeStart: tick thread starting");
     RUNNING.store(true, Ordering::SeqCst);
     thread::spawn(|| {
         // ~16ms ≈ 60Hz; the original WIPI/MIDP handsets ran their UI loop

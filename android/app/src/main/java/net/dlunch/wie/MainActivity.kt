@@ -1,10 +1,17 @@
 package net.dlunch.wie
 
-import androidx.activity.ComponentActivity
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 
 /**
  * MVP shell: pick a .zip (KTF/LGT/SKT archive) or .jar from storage, load
@@ -21,10 +28,31 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Must run before anything touches `WieNative` (which happens as
+        // soon as setContentView() below inflates VirtualKeypadView) -
+        // otherwise wie_jni's log file open fails silently on first launch
+        // because the permission isn't granted yet. If that happens, grant
+        // the permission and just relaunch the app once.
+        ensureStoragePermission()
+
         setContentView(R.layout.activity_main)
 
         findViewById<android.view.View>(R.id.pick_rom_button).setOnClickListener {
             pickFile.launch("*/*")
+        }
+    }
+
+    private fun ensureStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                Toast.makeText(this, "Izinkan \"All files access\" biar log bisa ditulis ke /storage/emulated/0/wie/", Toast.LENGTH_LONG).show()
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))
+                startActivity(intent)
+            }
+        } else {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 1001)
+            }
         }
     }
 

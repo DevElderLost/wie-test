@@ -4,7 +4,10 @@
 //! GPU path - the source resolution is tiny (~176x220 / 240x320) so this is
 //! plenty fast even on old phones.
 
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicU32, Ordering},
+};
 
 use ndk::{hardware_buffer_format::HardwareBufferFormat, native_window::NativeWindow};
 use wie_backend::canvas::Image;
@@ -14,6 +17,7 @@ pub struct AndroidScreen {
     width: u32,
     height: u32,
     window: Mutex<Option<NativeWindow>>,
+    paint_count: AtomicU32,
 }
 
 impl AndroidScreen {
@@ -22,6 +26,7 @@ impl AndroidScreen {
             width,
             height,
             window: Mutex::new(None),
+            paint_count: AtomicU32::new(0),
         }
     }
 
@@ -33,8 +38,14 @@ impl AndroidScreen {
     // the rest is bookkeeping.
     pub fn set_window(&self, window: Option<NativeWindow>) {
         if let Some(w) = &window {
-            let _ = w.set_buffers_geometry(self.width as i32, self.height as i32, Some(HardwareBufferFormat::R8G8B8A8_UNORM));
+            match w.set_buffers_geometry(self.width as i32, self.height as i32, Some(HardwareBufferFormat::R8G8B8A8_UNORM)) {
+                Ok(()) => log::info!("set_buffers_geometry OK ({}x{}, RGBA_8888)", self.width, self.height),
+                Err(e) => log::error!("set_buffers_geometry FAILED: {e:?}"),
+            }
+        } else {
+            log::info!("window unbound");
         }
+        self.paint_count.store(0, Ordering::Relaxed);
         *self.window.lock().unwrap() = window;
     }
 }
@@ -51,14 +62,19 @@ impl wie_backend::Screen for AndroidScreen {
     fn paint(&self, image: &dyn Image) {
         let guard = self.window.lock().unwrap();
         let Some(window) = guard.as_ref() else {
-            return; // surface not ready yet (e.g. app backgrounded) - drop the frame
+            log::warn!("paint() called with no window bound - frame dropped");
+            return;
         };
 
         let bpp = image.bytes_per_pixel();
         let src = image.raw();
 
-        let Ok(mut buffer) = window.lock(None) else {
-            return;
+        let mut buffer = match window.lock(None) {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("ANativeWindow_lock FAILED: {e:?}");
+                return;
+            }
         };
 
         let dst_stride = buffer.stride() as usize;
@@ -82,6 +98,14 @@ impl wie_backend::Screen for AndroidScreen {
                 }
             }
             let _ = src_row_start; // kept for future fast-path (raw() memcpy when formats match)
+        }
+
+        // Only the first handful of frames get logged - this is a tick-rate
+        // (~60Hz) hot path and we don't want to flood logcat once things
+        // are actually working.
+        let n = self.paint_count.fetch_add(1, Ordering::Relaxed);
+        if n < 5 {
+            log::info!("paint() #{n}: buffer {}x{} stride={}", buffer.width(), buffer.height(), dst_stride);
         }
     }
 

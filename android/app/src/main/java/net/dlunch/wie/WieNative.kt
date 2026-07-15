@@ -1,6 +1,8 @@
 package net.dlunch.wie
 
+import android.os.Environment
 import android.view.Surface
+import java.io.File
 
 /**
  * Thin JNI binding to `wie_jni`. Every `external fun` here must have a
@@ -10,7 +12,21 @@ import android.view.Surface
 object WieNative {
     init {
         System.loadLibrary("wie_jni")
-        nativeInitLogging()
+        nativeInitLogging(logFilePath())
+    }
+
+    /**
+     * `/storage/emulated/0/wie/wie_jni.log` - plain shared storage, not the
+     * app-private sandbox, so it's easy to find with any file manager.
+     * Requires "All files access" to be granted (MainActivity prompts for
+     * this on first run - see MainActivity.ensureStoragePermission()).
+     * If the permission isn't granted yet when this runs, file writes
+     * silently no-op (see wie_jni/src/filelog.rs) - grant the permission
+     * and relaunch the app.
+     */
+    private fun logFilePath(): String {
+        val dir = File(Environment.getExternalStorageDirectory(), "wie")
+        return File(dir, "wie_jni.log").absolutePath
     }
 
     // Key codes used with nativeKeyDown/Up. Must match `convert_key_code` in
@@ -42,7 +58,7 @@ object WieNative {
         const val STAR = 23
     }
 
-    private external fun nativeInitLogging()
+    private external fun nativeInitLogging(logPath: String)
 
     /** [filesDir] should be `context.filesDir.absolutePath`. Returns true on success. */
     external fun nativeLoadApp(filesDir: String, filename: String, data: ByteArray): Boolean
