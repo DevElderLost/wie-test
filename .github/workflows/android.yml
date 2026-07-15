@@ -1,0 +1,66 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wie_jni/**"
+      - "wie_backend/**"
+      - "wie_ktf/**"
+      - "wie_lgt/**"
+      - "wie_skt/**"
+      - "wie_j2me/**"
+      - "android/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: "recursive"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager --install "ndk;27.0.12077973"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-android-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Gradle build
+        working-directory: android
+        env:
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/27.0.12077973
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wie-android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
