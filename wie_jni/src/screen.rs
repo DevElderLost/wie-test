@@ -57,7 +57,7 @@ impl wie_backend::Screen for AndroidScreen {
         let bpp = image.bytes_per_pixel();
         let src = image.raw();
 
-        let Ok(mut buffer) = window.lock() else {
+        let Ok(mut buffer) = window.lock(None) else {
             return;
         };
 
