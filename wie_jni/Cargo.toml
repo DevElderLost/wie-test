@@ -1,0 +1,28 @@
+[package]
+name = "wie_jni"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# cdylib -> libwie_jni.so, loaded from Kotlin via System.loadLibrary("wie_jni")
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = { workspace = true, features = ["backtrace"] }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+
+jni = "0.21"
+ndk = "0.9"
+ndk-context = "0.1"
+android_logger = "0.14"
+parking_lot = "0.12"
+
+wie_backend = { workspace = true }
+wie_util = { workspace = true }
+
+wie_j2me = { path = "../wie_j2me" }
+wie_ktf = { path = "../wie_ktf" }
+wie_lgt = { path = "../wie_lgt" }
+wie_skt = { path = "../wie_skt" }
